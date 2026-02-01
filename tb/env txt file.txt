@@ -1,0 +1,105 @@
+`ifndef ENV_SV
+`define ENV_SV
+
+import tb_defs::*;
+`include "m_trans_random.sv"
+`include "generator.sv"
+`include "master_driver.sv"
+`include "slave_driver.sv"
+`include "master_monitor.sv"
+`include "slave_monitor.sv"
+`include "scoreboard.sv"
+
+class env;
+
+    virtual axi_interconnect_if vif;
+    
+    // Components
+    master_driver   mst_drvs[MST_AMT];
+    slave_driver    slv_drvs[SLV_AMT];
+    generator       gens[MST_AMT];
+    master_monitor  mst_mons[MST_AMT];
+    slave_monitor   slv_mons[SLV_AMT];
+    scoreboard      sb;
+    
+    // Mailboxes (Per Master)
+    mailbox #(trans_info) mbx_AW[MST_AMT];
+    mailbox #(trans_info) mbx_W[MST_AMT];
+    mailbox #(trans_info) mbx_AR[MST_AMT];
+    
+    // Monitor Mailboxes
+    mailbox #(trans_info) mbx_mst_mon[MST_AMT];
+    mailbox #(trans_info) mbx_slv_mon[SLV_AMT];
+    
+    // Config
+    int test_mode;
+    int trans_count;
+    
+    function new(virtual axi_interconnect_if v, int mode, int count);
+        this.vif = v;
+        this.test_mode = mode;
+        this.trans_count = count;
+    endfunction
+    
+    function void build();
+        $display("[ENV] Building Environment with Mode=%0d", test_mode);
+        
+        // Create Monitor Mailboxes
+        for(int i=0; i<MST_AMT; i++) mbx_mst_mon[i] = new();
+        for(int i=0; i<SLV_AMT; i++) mbx_slv_mon[i] = new();
+        
+        // Create Scoreboard (Pass Monitor Mailboxes)
+        sb = new(vif, mbx_mst_mon, mbx_slv_mon);
+        
+        // Create Mailboxes and Agents
+        for(int i=0; i<MST_AMT; i++) begin
+            mbx_AW[i] = new();
+            mbx_W[i]  = new();
+            mbx_AR[i] = new();
+            
+            mst_drvs[i] = new(vif, i, mbx_AW[i], mbx_W[i], mbx_AR[i]);
+            gens[i]     = new(i, mbx_AW[i], mbx_W[i], mbx_AR[i], test_mode, trans_count);
+            mst_mons[i] = new(vif, i, mbx_mst_mon[i]);
+        end
+        
+        for(int i=0; i<SLV_AMT; i++) begin
+            slv_drvs[i] = new(vif, i);
+            slv_mons[i] = new(vif, i, mbx_slv_mon[i]);
+        end
+    endfunction
+    
+    task run();
+        $display("[ENV] Run Phase Started");
+        
+        // Start Components
+        sb.run();
+        
+        for(int i=0; i<SLV_AMT; i++) slv_drvs[i].run();
+        for(int i=0; i<MST_AMT; i++) mst_drvs[i].run();
+        for(int i=0; i<MST_AMT; i++) mst_mons[i].run();
+        for(int i=0; i<SLV_AMT; i++) slv_mons[i].run();
+        
+        // Start Generators (Production)
+        fork
+            begin
+                for(int i=0; i<MST_AMT; i++) begin
+                    fork
+                        automatic int k = i;
+                        gens[k].run();
+                    join_none
+                end
+                wait fork; // Wait for all generators to finish generating
+            end
+        join
+        
+        // Drain Time
+        #10000; 
+        
+        sb.report_stats();
+        $display("[ENV] Run Phase Complete");
+        $finish;
+    endtask
+
+endclass
+
+`endif

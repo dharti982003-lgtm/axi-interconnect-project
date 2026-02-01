@@ -1,0 +1,82 @@
+`ifndef M_TRANS_RANDOM_SV
+`define M_TRANS_RANDOM_SV
+
+import tb_defs::*;
+
+class m_trans_random;
+    
+    // Transaction Data
+    rand trans_info data;
+    
+    // Control Knobs
+    int mode = 4; // Default to ALL_RANDOM
+    
+    // Constraints
+    
+    // Basic Constraints for Validity
+    constraint c_basic {
+        data.AxSIZE <= 2; // Support up to 4 bytes (32-bit width)
+        data.AxBURST inside {0, 1, 2}; // FIXED, INCR, WRAP
+        // AXI4 requirement: Address aligned to size
+        (data.AxADDR % (1 << data.AxSIZE)) == 0;
+    }
+    
+    // Mode 0: BURST_MODE
+    // Equal R/W, Burst=INCR(1), Aligned
+    constraint c_mode_0 {
+        if (mode == 0) {
+            data.AxBURST == 1; 
+            // R/W distribution handles naturally by rand bit, but can force check if needed
+        }
+    }
+    
+    // Mode 1: ARBITRATION_MODE
+    // Target Slave 0, Read Only, Len=1 (0 in 0-indexed), Aligned
+    constraint c_mode_1 {
+        if (mode == 1) {
+            data.trans_wr_rd == READ;
+            data.AxBURST == 1; // Assuming INCR for arbitration test too? or Fixed? User said "Aligned addresses"
+            data.AxLEN == 0; // 1-beat length (0-indexed)
+            
+            // Target Slave 0. Assuming Slave ID is upper bits [31:30] for 4 slaves.
+            data.AxADDR[31:30] == 0;
+        }
+    }
+    
+    // Mode 2: BURST_MODE_WR
+    // Write Only, Burst=1 (INCR), Aligned
+    constraint c_mode_2 {
+        if (mode == 2) {
+            data.trans_wr_rd == WRITE;
+            data.AxBURST == 1;
+        }
+    }
+
+    // Mode 3: BURST_MODE_RD
+    // Read Only, Burst=1 (INCR), Aligned
+    constraint c_mode_3 {
+        if (mode == 3) {
+            data.trans_wr_rd == READ;
+            data.AxBURST == 1;
+        }
+    }
+
+    // Mode 4: ALL_RANDOM_MODE
+    constraint c_mode_4 {
+        if (mode == 4) {
+            data.AxBURST == 1; // User spec: "with AxBURST == 1"
+        }
+    }
+    
+    function new(int m = 4);
+        this.mode = m;
+    endfunction
+    
+    function void post_randomize();
+        // Optional: Print what was generated
+        // $display("Generated Trans: Mode=%0d R/W=%0b Addr=%h", mode, data.trans_wr_rd, data.AxADDR);
+    endfunction
+
+endclass
+
+`endif

@@ -1,0 +1,57 @@
+`ifndef GENERATOR_SV
+`define GENERATOR_SV
+
+import tb_defs::*;
+
+class generator;
+    
+    // Randomization Object
+    m_trans_random rand_obj;
+    
+    // Output Mailboxes to Driver
+    mailbox #(trans_info) mbx_AW;
+    mailbox #(trans_info) mbx_W;
+    mailbox #(trans_info) mbx_AR;
+    
+    int mst_id;
+    int mode;
+    int num_trans;
+    
+    function new(int id, mailbox #(trans_info) aw, mailbox #(trans_info) w, mailbox #(trans_info) ar, int m, int n);
+        this.mst_id    = id;
+        this.mbx_AW    = aw;
+        this.mbx_W     = w;
+        this.mbx_AR    = ar;
+        this.mode      = m;
+        this.num_trans = n;
+        
+        rand_obj = new(mode);
+    endfunction
+    
+    task run();
+        $display("[GEN %0d] Generator Started. Mode=%0d Count=%0d", mst_id, mode, num_trans);
+        
+        for (int i=0; i < num_trans; i++) begin
+            if (!rand_obj.randomize()) begin
+                $error("[GEN %0d] Randomization Failed!", mst_id);
+            end
+            
+            // Set ID to match Master ID (Usually ID has master index encoded, or we just rely on MST ID param)
+            // The RTL expects MST ID to be set.
+            rand_obj.data.AxID = i % (1 << TRANS_MST_ID_W); // Simple unique IDs
+            
+            // Push to Mailboxes
+            if (rand_obj.data.trans_wr_rd == WRITE) begin
+                mbx_AW.put(rand_obj.data);
+                mbx_W.put(rand_obj.data);
+            end else begin
+                mbx_AR.put(rand_obj.data);
+            end
+        end
+        
+        $display("[GEN %0d] Generation Complete", mst_id);
+    endtask
+
+endclass
+
+`endif

@@ -1,0 +1,131 @@
+`ifndef AXI_INTERFACE_SV
+`define AXI_INTERFACE_SV
+
+interface axi_interconnect_if (
+    input logic ACLK,
+    input logic ARESETn
+);
+    import tb_defs::*;
+
+    // -----------------------------------------------------------------------
+    // Master Interface Signals (TB drives these to DUT 'm_' inputs)
+    // -----------------------------------------------------------------------
+    // Write Address
+    logic   [TRANS_MST_ID_W*MST_AMT-1:0]    m_AWID_i;
+    logic   [ADDR_WIDTH*MST_AMT-1:0]        m_AWADDR_i;
+    logic   [TRANS_BURST_W*MST_AMT-1:0]     m_AWBURST_i;
+    logic   [TRANS_DATA_LEN_W*MST_AMT-1:0]  m_AWLEN_i;
+    logic   [TRANS_DATA_SIZE_W*MST_AMT-1:0] m_AWSIZE_i;
+    logic   [MST_AMT-1:0]                   m_AWVALID_i;
+    logic   [MST_AMT-1:0]                   m_AWREADY_o; // DUT Output
+
+    // Write Data
+    logic   [DATA_WIDTH*MST_AMT-1:0]        m_WDATA_i;
+    logic   [MST_AMT-1:0]                   m_WLAST_i;
+    logic   [MST_AMT-1:0]                   m_WVALID_i;
+    logic   [MST_AMT-1:0]                   m_WREADY_o; // DUT Output
+
+    // Write Response
+    logic   [TRANS_MST_ID_W*MST_AMT-1:0]    m_BID_o;    // DUT Output
+    logic   [TRANS_WR_RESP_W*MST_AMT-1:0]   m_BRESP_o;  // DUT Output
+    logic   [MST_AMT-1:0]                   m_BVALID_o; // DUT Output
+    logic   [MST_AMT-1:0]                   m_BREADY_i;
+
+    // Read Address
+    logic   [TRANS_MST_ID_W*MST_AMT-1:0]    m_ARID_i;
+    logic   [ADDR_WIDTH*MST_AMT-1:0]        m_ARADDR_i;
+    logic   [TRANS_BURST_W*MST_AMT-1:0]     m_ARBURST_i;
+    logic   [TRANS_DATA_LEN_W*MST_AMT-1:0]  m_ARLEN_i;
+    logic   [TRANS_DATA_SIZE_W*MST_AMT-1:0] m_ARSIZE_i;
+    logic   [MST_AMT-1:0]                   m_ARVALID_i;
+    logic   [MST_AMT-1:0]                   m_ARREADY_o; // DUT Output
+
+    // Read Data
+    logic   [TRANS_MST_ID_W*MST_AMT-1:0]    m_RID_o;    // DUT Output
+    logic   [DATA_WIDTH*MST_AMT-1:0]        m_RDATA_o;  // DUT Output
+    logic   [TRANS_WR_RESP_W*MST_AMT-1:0]   m_RRESP_o;  // DUT Output
+    logic   [MST_AMT-1:0]                   m_RLAST_o;  // DUT Output
+    logic   [MST_AMT-1:0]                   m_RVALID_o; // DUT Output
+    logic   [MST_AMT-1:0]                   m_RREADY_i;
+
+    // -----------------------------------------------------------------------
+    // Slave Interface Signals (TB drives these to DUT 's_' inputs)
+    // -----------------------------------------------------------------------
+    // Note: These definitions align with DUT direction.
+    // 's_AWID_o' is a DUT Output, so TB must read it.
+    // 's_AWREADY_i' is a DUT Input, so TB must drive it.
+    
+    // Write Address
+    logic   [SLV_AMT-1:0]                   s_AWREADY_i;
+    logic   [TRANS_SLV_ID_W*SLV_AMT-1:0]    s_AWID_o;    // DUT Output (ID width different!)
+    logic   [ADDR_WIDTH*SLV_AMT-1:0]        s_AWADDR_o;  // DUT Output
+    logic   [TRANS_BURST_W*SLV_AMT-1:0]     s_AWBURST_o; // DUT Output
+    logic   [TRANS_DATA_LEN_W*SLV_AMT-1:0]  s_AWLEN_o;   // DUT Output
+    logic   [TRANS_DATA_SIZE_W*SLV_AMT-1:0] s_AWSIZE_o;  // DUT Output
+    logic   [SLV_AMT-1:0]                   s_AWVALID_o; // DUT Output
+
+    // Write Data
+    logic   [SLV_AMT-1:0]                   s_WREADY_i;
+    logic   [DATA_WIDTH*SLV_AMT-1:0]        s_WDATA_o;   // DUT Output
+    logic   [SLV_AMT-1:0]                   s_WLAST_o;   // DUT Output
+    logic   [SLV_AMT-1:0]                   s_WVALID_o;  // DUT Output
+
+    // Write Response
+    logic   [TRANS_SLV_ID_W*SLV_AMT-1:0]    s_BID_i;
+    logic   [TRANS_WR_RESP_W*SLV_AMT-1:0]   s_BRESP_i;
+    logic   [SLV_AMT-1:0]                   s_BVALID_i;
+    logic   [SLV_AMT-1:0]                   s_BREADY_o;  // DUT Output
+
+    // Read Address
+    logic   [SLV_AMT-1:0]                   s_ARREADY_i;
+    logic   [TRANS_SLV_ID_W*SLV_AMT-1:0]    s_ARID_o;    // DUT Output
+    logic   [ADDR_WIDTH*SLV_AMT-1:0]        s_ARADDR_o;  // DUT Output
+    logic   [TRANS_BURST_W*SLV_AMT-1:0]     s_ARBURST_o; // DUT Output
+    logic   [TRANS_DATA_LEN_W*SLV_AMT-1:0]  s_ARLEN_o;   // DUT Output
+    logic   [TRANS_DATA_SIZE_W*SLV_AMT-1:0] s_ARSIZE_o;  // DUT Output
+    logic   [SLV_AMT-1:0]                   s_ARVALID_o; // DUT Output
+
+    // Read Data
+    logic   [TRANS_SLV_ID_W*SLV_AMT-1:0]    s_RID_i;
+    logic   [DATA_WIDTH*SLV_AMT-1:0]        s_RDATA_i;
+    logic   [TRANS_WR_RESP_W*SLV_AMT-1:0]   s_RRESP_i;
+    logic   [SLV_AMT-1:0]                   s_RLAST_i;
+    logic   [SLV_AMT-1:0]                   s_RVALID_i;
+    logic   [SLV_AMT-1:0]                   s_RREADY_o;  // DUT Output
+    
+    // Parameter constants for drivers to easier access width
+    // SLV ID Width is different from MST ID Width on the slave side (it appends MST ID)
+    localparam T_SLV_ID_W = TRANS_SLV_ID_W;
+    localparam T_MST_ID_W = TRANS_MST_ID_W;
+
+
+    // -----------------------------------------------------------------------
+    // ASSERTIONS
+    // -----------------------------------------------------------------------
+    
+    // 1. Reset Check: When Reset is Low (Active), Valid signals should be low
+    property p_reset_awvalid(int i);
+        @(posedge ACLK) !ARESETn |-> !m_AWVALID_i[i];
+    endproperty
+    
+    genvar i;
+    generate
+        for(i=0; i<MST_AMT; i++) begin : MST_ASSERT
+            assert property (p_reset_awvalid(i)) else $error("MST[%0d] AWVALID not low during Reset", i);
+            
+            // 2. Stability: Once Valid is high, it must remain high until Ready
+            property p_stable_awvalid;
+                @(posedge ACLK) disable iff (!ARESETn)
+                (m_AWVALID_i[i] && !m_AWREADY_o[i]) |=> m_AWVALID_i[i];
+            endproperty
+            assert property (p_stable_awvalid) else $error("MST[%0d] AWVALID dropped before READY", i);
+            
+            // 3. X-Check
+            assert property (@(posedge ACLK) m_AWVALID_i[i] |-> !$isunknown(m_AWADDR_i[ADDR_WIDTH*(i+1)-1 -: ADDR_WIDTH])) 
+                else $error("MST[%0d] AWADDR has X when VALID is high", i);
+        end
+    endgenerate
+
+endinterface
+
+`endif

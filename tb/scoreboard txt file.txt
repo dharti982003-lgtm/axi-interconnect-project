@@ -1,0 +1,87 @@
+`ifndef SCOREBOARD_SV
+`define SCOREBOARD_SV
+
+import tb_defs::*;
+
+class scoreboard;
+
+    virtual axi_interconnect_if vif;
+    
+    // Mailboxes from Monitors
+    mailbox #(trans_info) mbx_mst_mon[MST_AMT];
+    mailbox #(trans_info) mbx_slv_mon[SLV_AMT];
+    
+    // Statistics
+    int total_write_trans = 0;
+    int total_read_trans  = 0;
+    int total_mst_scb = 0;
+    int total_slv_scb = 0;
+    
+    real start_time;
+    real end_time;
+    
+    function new(virtual axi_interconnect_if v, mailbox #(trans_info) m_mon[], mailbox #(trans_info) s_mon[]);
+        this.vif = v;
+        this.mbx_mst_mon = m_mon;
+        this.mbx_slv_mon = s_mon;
+    endfunction
+    
+    task run();
+        $display("[SCB] Scoreboard Started");
+        start_time = $time;
+        
+        fork
+            monitor_mst_activity();
+            monitor_slv_activity();
+        join_none
+    endtask
+    
+    task monitor_mst_activity();
+        trans_info t;
+        forever begin
+             // Use array of mailboxes is tricky in 'forever' without specific index.
+             // Usually we fork for each master.
+             for(int i=0; i<MST_AMT; i++) begin
+                 if(mbx_mst_mon[i].try_get(t)) begin
+                    // $display("[SCB] Received from MST[%0d] Addr=%h", i, t.AxADDR);
+                    total_mst_scb++;
+                    if(t.trans_wr_rd == 0) total_write_trans++;
+                    else total_read_trans++;
+                 end
+             end
+             #1; // Simple polling or use blocking in threads
+        end
+    endtask
+    
+    task monitor_slv_activity();
+        trans_info t;
+        forever begin
+             for(int i=0; i<SLV_AMT; i++) begin
+                 if(mbx_slv_mon[i].try_get(t)) begin
+                    // $display("[SCB] Received from SLV[%0d] Addr=%h", i, t.AxADDR);
+                    total_slv_scb++;
+                 end
+             end
+             #1;
+        end
+    endtask
+    
+    function void report_stats();
+        end_time = $time;
+        $display("\n==================================================");
+        $display("SCOREBOARD REPORT");
+        $display("==================================================");
+        $display("Total Write Transactions: %0d", total_write_trans);
+        $display("Total Read Transactions:  %0d", total_read_trans);
+        $display("Simulation Time:          %0t", end_time - start_time);
+        
+        $display("\n--- Stall Cycles (Backpressure from Interconnect) ---");
+        for(int i=0; i<MST_AMT; i++) begin
+            $display("MST[%0d]: AW Stalls=%0d, W Stalls=%0d, AR Stalls=%0d", i, aw_stalls[i], w_stalls[i], ar_stalls[i]);
+        end
+        $display("==================================================\n");
+    endfunction
+
+endclass
+
+`endif

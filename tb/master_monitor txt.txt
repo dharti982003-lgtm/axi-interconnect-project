@@ -1,0 +1,73 @@
+`ifndef MASTER_MONITOR_SV
+`define MASTER_MONITOR_SV
+
+import tb_defs::*;
+
+class master_monitor;
+    
+    virtual axi_interconnect_if vif;
+    int mst_idx;
+    
+    // Mailboxes to Scoreboard
+    mailbox #(trans_info) item_collected_port;
+    
+    function new(virtual axi_interconnect_if v, int id, mailbox #(trans_info) mbx);
+        this.vif = v;
+        this.mst_idx = id;
+        this.item_collected_port = mbx;
+    endfunction
+    
+    task run();
+        $display("[MON_MST %0d] Started", mst_idx);
+        fork
+            monitor_write();
+            monitor_read();
+        join_none
+    endtask
+    
+    task monitor_write();
+        trans_info t;
+        forever begin
+            // Detect Write Address Handshake
+            @(posedge vif.ACLK);
+            if (vif.m_AWVALID_i[mst_idx] && vif.m_AWREADY_o[mst_idx]) begin
+                t.trans_wr_rd = WRITE;
+                t.AxID      = vif.m_AWID_i   [TRANS_MST_ID_W*(mst_idx+1)-1 -: TRANS_MST_ID_W];
+                t.AxADDR    = vif.m_AWADDR_i [ADDR_WIDTH*(mst_idx+1)-1     -: ADDR_WIDTH];
+                t.AxBURST   = vif.m_AWBURST_i[TRANS_BURST_W*(mst_idx+1)-1  -: TRANS_BURST_W];
+                t.AxLEN     = vif.m_AWLEN_i  [TRANS_DATA_LEN_W*(mst_idx+1)-1-: TRANS_DATA_LEN_W];
+                t.AxSIZE    = vif.m_AWSIZE_i [TRANS_DATA_SIZE_W*(mst_idx+1)-1-: TRANS_DATA_SIZE_W];
+                
+                // Collect Data
+                // Simplified: Assuming data follows immediately or tracking it separately. 
+                // For simplified Scoreboarding, we capture the intent (addr) and verification relies on Data integrity which might need W channel monitoring.
+                // Depending on requirement, we can monitor W channel too.
+                
+                item_collected_port.put(t);
+                // $display("[MON_MST %0d] Collected WRITE Addr=%h ID=%h", mst_idx, t.AxADDR, t.AxID);
+            end
+        end
+    endtask
+    
+    task monitor_read();
+        trans_info t;
+        forever begin
+            // Detect Read Address Handshake
+             @(posedge vif.ACLK);
+             if (vif.m_ARVALID_i[mst_idx] && vif.m_ARREADY_o[mst_idx]) begin
+                t.trans_wr_rd = READ;
+                t.AxID      = vif.m_ARID_i   [TRANS_MST_ID_W*(mst_idx+1)-1 -: TRANS_MST_ID_W];
+                t.AxADDR    = vif.m_ARADDR_i [ADDR_WIDTH*(mst_idx+1)-1     -: ADDR_WIDTH];
+                t.AxBURST   = vif.m_ARBURST_i[TRANS_BURST_W*(mst_idx+1)-1  -: TRANS_BURST_W];
+                t.AxLEN     = vif.m_ARLEN_i  [TRANS_DATA_LEN_W*(mst_idx+1)-1-: TRANS_DATA_LEN_W];
+                t.AxSIZE    = vif.m_ARSIZE_i [TRANS_DATA_SIZE_W*(mst_idx+1)-1-: TRANS_DATA_SIZE_W];
+                
+                item_collected_port.put(t);
+                // $display("[MON_MST %0d] Collected READ Addr=%h ID=%h", mst_idx, t.AxADDR, t.AxID);
+             end
+        end
+    endtask
+    
+endclass
+
+`endif

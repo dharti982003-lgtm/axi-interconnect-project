@@ -1,0 +1,40 @@
+`ifndef TB_DEFS_SV
+`define TB_DEFS_SV
+
+package tb_defs;
+
+    // Simulation Parameters
+    parameter MST_AMT           = 4;
+    parameter SLV_AMT           = 4;
+    
+    // AXI Parameters (Must match RTL)
+    parameter DATA_WIDTH        = 32;
+    parameter ADDR_WIDTH        = 32;
+    parameter TRANS_MST_ID_W    = 5;
+    parameter TRANS_BURST_W     = 2;
+    parameter TRANS_DATA_LEN_W  = 3; // 3 bits => Max length 8
+    parameter TRANS_DATA_SIZE_W = 3;
+    parameter TRANS_WR_RESP_W   = 2;
+    
+    // Transaction Types
+    typedef enum bit { WRITE=0, READ=1 } trans_type_e;
+
+    // Transaction Struct
+    // Using packed struct for easier mailbox passing if needed, though unpacked is often easier for arrays.
+    // User requested "WDATA array of size 8".
+    // Since we are using mailboxes which can hold any type, a class or unpacked struct is fine.
+    // User requested "typedef struct".
+    
+    typedef struct {
+        bit                     trans_wr_rd; // 0: Write, 1: Read
+        bit [TRANS_MST_ID_W-1:0] AxID;
+        bit [ADDR_WIDTH-1:0]    AxADDR;
+        bit [TRANS_BURST_W-1:0] AxBURST;
+        bit [TRANS_DATA_LEN_W-1:0] AxLEN;
+        bit [TRANS_DATA_SIZE_W-1:0] AxSIZE;
+        bit [DATA_WIDTH-1:0]    WDATA[8];    // Fixed size array for data
+    } trans_info;
+
+endpackage
+
+`endif

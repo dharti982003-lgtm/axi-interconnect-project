@@ -1,0 +1,164 @@
+`ifndef SLAVE_DRIVER_SV
+`define SLAVE_DRIVER_SV
+
+import tb_defs::*;
+
+class slave_driver;
+
+    virtual axi_interconnect_if vif;
+    int slv_idx;
+
+    function new(virtual axi_interconnect_if v, int id);
+        this.vif     = v;
+        this.slv_idx = id;
+    endfunction
+
+    task run();
+        $display("[SLV %0d] Slave Driver Started", slv_idx);
+        init_signals();
+        
+        fork
+            respond_write();
+            respond_read();
+        join_none
+    endtask
+
+    task init_signals();
+        vif.s_AWREADY_i[slv_idx] <= 0;
+        vif.s_WREADY_i [slv_idx] <= 0;
+        vif.s_BVALID_i [slv_idx] <= 0;
+        vif.s_ARREADY_i[slv_idx] <= 0;
+        vif.s_RVALID_i [slv_idx] <= 0;
+    endtask
+
+    // ---------------------------------------------------------
+    // Write Response Path
+    // ---------------------------------------------------------
+    task respond_write();
+        // Capture vars
+        logic [TRANS_SLV_ID_W-1:0]  awid;
+        logic [ADDR_WIDTH-1:0]      addr;
+        logic [TRANS_DATA_LEN_W-1:0] len;
+        logic [TRANS_DATA_SIZE_W-1:0] size;
+        int burst_len;
+        
+        forever begin
+            // 1. Address Phase
+            vif.s_AWREADY_i[slv_idx] <= 1;
+            do begin
+                @(posedge vif.ACLK);
+            end while (vif.s_AWVALID_o[slv_idx] === 0);
+            
+            // Capture
+            awid = vif.s_AWID_o   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W];
+            addr = vif.s_AWADDR_o [ADDR_WIDTH*(slv_idx+1)-1     -: ADDR_WIDTH];
+            len  = vif.s_AWLEN_o  [TRANS_DATA_LEN_W*(slv_idx+1)-1-: TRANS_DATA_LEN_W];
+            size = vif.s_AWSIZE_o [TRANS_DATA_SIZE_W*(slv_idx+1)-1-: TRANS_DATA_SIZE_W];
+            
+            check_4kb(addr, len, size);
+            
+            vif.s_AWREADY_i[slv_idx] <= 0;
+            
+            // 2. Data Phase
+            burst_len = len + 1;
+            vif.s_WREADY_i[slv_idx] <= 1;
+            
+            for (int i=0; i < burst_len; i++) begin
+                do begin
+                    @(posedge vif.ACLK);
+                end while (vif.s_WVALID_o[slv_idx] === 0);
+                // Consume data (can store if needed for scoreboard, here just generic slave)
+                // If WLAST check mismatch, could error
+            end
+            
+            vif.s_WREADY_i[slv_idx] <= 0;
+            
+            // 3. Response Phase
+            @(posedge vif.ACLK);
+            repeat($urandom_range(0, 5)) @(posedge vif.ACLK); // Random delay
+            
+            vif.s_BID_i   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W] <= awid; // Echo ID
+            vif.s_BRESP_i [TRANS_WR_RESP_W*(slv_idx+1)-1 -: TRANS_WR_RESP_W] <= 0; // OKAY
+            vif.s_BVALID_i[slv_idx] <= 1;
+            
+            do begin
+                @(posedge vif.ACLK);
+            end while (vif.s_BREADY_o[slv_idx] === 0);
+            
+            vif.s_BVALID_i[slv_idx] <= 0; 
+        end
+    endtask
+
+    // ---------------------------------------------------------
+    // Read Response Path
+    // ---------------------------------------------------------
+    task respond_read();
+        // Capture vars
+        logic [TRANS_SLV_ID_W-1:0]  arid;
+        logic [ADDR_WIDTH-1:0]      addr;
+        logic [TRANS_DATA_LEN_W-1:0] len;
+        logic [TRANS_DATA_SIZE_W-1:0] size;
+        int burst_len;
+
+        forever begin
+            // 1. Address Phase
+            vif.s_ARREADY_i[slv_idx] <= 1;
+            do begin
+                @(posedge vif.ACLK);
+            end while (vif.s_ARVALID_o[slv_idx] === 0);
+            
+            arid = vif.s_ARID_o   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W];
+            addr = vif.s_ARADDR_o [ADDR_WIDTH*(slv_idx+1)-1     -: ADDR_WIDTH];
+            len  = vif.s_ARLEN_o  [TRANS_DATA_LEN_W*(slv_idx+1)-1-: TRANS_DATA_LEN_W];
+            size = vif.s_ARSIZE_o [TRANS_DATA_SIZE_W*(slv_idx+1)-1-: TRANS_DATA_SIZE_W];
+            
+            check_4kb(addr, len, size);
+            
+            vif.s_ARREADY_i[slv_idx] <= 0;
+            
+            // 2. Data Phase
+            burst_len = len + 1;
+            
+            @(posedge vif.ACLK);
+            repeat($urandom_range(0, 5)) @(posedge vif.ACLK); // Random delay
+            
+            for (int i=0; i < burst_len; i++) begin
+                vif.s_RID_i   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W] <= arid;
+                vif.s_RDATA_i [DATA_WIDTH*(slv_idx+1)-1     -: DATA_WIDTH]     <= $urandom;
+                vif.s_RRESP_i [TRANS_WR_RESP_W*(slv_idx+1)-1-: TRANS_WR_RESP_W]<= 0; // OKAY
+                vif.s_RLAST_i [slv_idx] <= (i == burst_len-1);
+                vif.s_RVALID_i[slv_idx] <= 1;
+                
+                do begin
+                    @(posedge vif.ACLK);
+                end while (vif.s_RREADY_o[slv_idx] === 0);
+                
+                vif.s_RVALID_i[slv_idx] <= 0;
+            end
+        end
+    endtask
+    
+    // ---------------------------------------------------------
+    // 4KB Boundary Check
+    // ---------------------------------------------------------
+    task check_4kb(logic [ADDR_WIDTH-1:0] addr, int len, int size);
+        longint start_offset;
+        longint bytes_xfer;
+        longint end_offset;
+        
+        start_offset = addr % 4096;
+        bytes_xfer   = (len + 1) * (1 << size);
+        end_offset   = start_offset + bytes_xfer;
+        
+        if (end_offset > 4096) begin
+            $display("[SLV %0d] MONITOR ERROR: Cross 4KB Boundary! Addr=%h Len=%0d Size=%0d EndOffset=%0d", 
+                slv_idx, addr, len, size, end_offset);
+            $error("Validation Failed: 4KB Boundary Crossing Detected.");
+        end else begin
+             // $display("[SLV %0d] 4KB Check OK. Addr=%h Bytes=%0d", slv_idx, addr, bytes_xfer);
+        end
+    endtask
+
+endclass
+
+`endif

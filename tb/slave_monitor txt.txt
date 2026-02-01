@@ -1,0 +1,68 @@
+`ifndef SLAVE_MONITOR_SV
+`define SLAVE_MONITOR_SV
+
+import tb_defs::*;
+
+class slave_monitor;
+    
+    virtual axi_interconnect_if vif;
+    int slv_idx;
+    
+    // Mailboxes
+    mailbox #(trans_info) item_collected_port;
+    
+    function new(virtual axi_interconnect_if v, int id, mailbox #(trans_info) mbx);
+        this.vif = v;
+        this.slv_idx = id;
+        this.item_collected_port = mbx;
+    endfunction
+    
+    task run();
+        $display("[MON_SLV %0d] Started", slv_idx);
+        fork
+            monitor_write();
+            monitor_read();
+        join_none
+    endtask
+    
+    task monitor_write();
+        trans_info t;
+        forever begin
+             @(posedge vif.ACLK);
+             if (vif.s_AWVALID_o[slv_idx] && vif.s_AWREADY_i[slv_idx]) begin
+                t.trans_wr_rd = WRITE;
+                // Note: Slave ID format is different (includes Master ID).
+                // We capture what we see on the bus.
+                t.AxID      = vif.s_AWID_o   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W]; // This will be wider than normal AxID
+                t.AxADDR    = vif.s_AWADDR_o [ADDR_WIDTH*(slv_idx+1)-1     -: ADDR_WIDTH];
+                t.AxBURST   = vif.s_AWBURST_o[TRANS_BURST_W*(slv_idx+1)-1  -: TRANS_BURST_W];
+                t.AxLEN     = vif.s_AWLEN_o  [TRANS_DATA_LEN_W*(slv_idx+1)-1-: TRANS_DATA_LEN_W];
+                t.AxSIZE    = vif.s_AWSIZE_o [TRANS_DATA_SIZE_W*(slv_idx+1)-1-: TRANS_DATA_SIZE_W];
+                
+                item_collected_port.put(t);
+                // $display("[MON_SLV %0d] Collected WRITE Addr=%h ID=%h", slv_idx, t.AxADDR, t.AxID);
+             end
+        end
+    endtask
+    
+    task monitor_read();
+        trans_info t;
+        forever begin
+             @(posedge vif.ACLK);
+             if (vif.s_ARVALID_o[slv_idx] && vif.s_ARREADY_i[slv_idx]) begin
+                t.trans_wr_rd = READ;
+                t.AxID      = vif.s_ARID_o   [TRANS_SLV_ID_W*(slv_idx+1)-1 -: TRANS_SLV_ID_W];
+                t.AxADDR    = vif.s_ARADDR_o [ADDR_WIDTH*(slv_idx+1)-1     -: ADDR_WIDTH];
+                t.AxBURST   = vif.s_ARBURST_o[TRANS_BURST_W*(slv_idx+1)-1  -: TRANS_BURST_W];
+                t.AxLEN     = vif.s_ARLEN_o  [TRANS_DATA_LEN_W*(slv_idx+1)-1-: TRANS_DATA_LEN_W];
+                t.AxSIZE    = vif.s_ARSIZE_o [TRANS_DATA_SIZE_W*(slv_idx+1)-1-: TRANS_DATA_SIZE_W];
+                
+                item_collected_port.put(t);
+                // $display("[MON_SLV %0d] Collected READ Addr=%h ID=%h", slv_idx, t.AxADDR, t.AxID);
+             end
+        end
+    endtask
+    
+endclass
+
+`endif

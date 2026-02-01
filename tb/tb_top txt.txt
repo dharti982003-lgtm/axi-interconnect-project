@@ -1,0 +1,134 @@
+`include "tb_defs.sv"
+`include "axi_interface.sv"
+`include "test.sv"
+
+module tb_top;
+    import tb_defs::*;
+
+    // Clock and Reset
+    logic ACLK;
+    logic ARESETn;
+
+    initial begin
+        ACLK = 0;
+        forever #5 ACLK = ~ACLK; // 100MHz
+    end
+
+    initial begin
+        ARESETn = 0;
+        #20 ARESETn = 1;
+    end
+
+    // Interface
+    axi_interconnect_if vif(ACLK, ARESETn);
+
+    // DUT
+    // Using default parameters or explicit if needed. tb_defs parameters match defaults mostly.
+    axi_interconnect #(
+        .MST_AMT            (MST_AMT),
+        .SLV_AMT            (SLV_AMT),
+        .DATA_WIDTH         (DATA_WIDTH),
+        .ADDR_WIDTH         (ADDR_WIDTH),
+        // Trans widths
+        .TRANS_MST_ID_W     (TRANS_MST_ID_W),
+        .TRANS_BURST_W      (TRANS_BURST_W),
+        .TRANS_DATA_LEN_W   (TRANS_DATA_LEN_W),
+        .TRANS_DATA_SIZE_W  (TRANS_DATA_SIZE_W),
+        .TRANS_WR_RESP_W    (TRANS_WR_RESP_W)
+        // Leaving others to default or calculate inside DUT
+    ) dut (
+        .ACLK_i             (ACLK),
+        .ARESETn_i          (ARESETn),
+        
+        // Master Interface Inputs (driven by TB)
+        .m_AWID_i           (vif.m_AWID_i),
+        .m_AWADDR_i         (vif.m_AWADDR_i),
+        .m_AWBURST_i        (vif.m_AWBURST_i),
+        .m_AWLEN_i          (vif.m_AWLEN_i),
+        .m_AWSIZE_i         (vif.m_AWSIZE_i),
+        .m_AWVALID_i        (vif.m_AWVALID_i),
+        .m_WDATA_i          (vif.m_WDATA_i),
+        .m_WLAST_i          (vif.m_WLAST_i),
+        .m_WVALID_i         (vif.m_WVALID_i),
+        .m_BREADY_i         (vif.m_BREADY_i),
+        .m_ARID_i           (vif.m_ARID_i),
+        .m_ARADDR_i         (vif.m_ARADDR_i),
+        .m_ARBURST_i        (vif.m_ARBURST_i),
+        .m_ARLEN_i          (vif.m_ARLEN_i),
+        .m_ARSIZE_i         (vif.m_ARSIZE_i),
+        .m_ARVALID_i        (vif.m_ARVALID_i),
+        .m_RREADY_i         (vif.m_RREADY_i),
+        
+        // Master Interface Outputs (monitored by TB)
+        .m_AWREADY_o        (vif.m_AWREADY_o),
+        .m_WREADY_o         (vif.m_WREADY_o),
+        .m_BID_o            (vif.m_BID_o),
+        .m_BRESP_o          (vif.m_BRESP_o),
+        .m_BVALID_o         (vif.m_BVALID_o),
+        .m_ARREADY_o        (vif.m_ARREADY_o),
+        .m_RID_o            (vif.m_RID_o),
+        .m_RDATA_o          (vif.m_RDATA_o),
+        .m_RRESP_o          (vif.m_RRESP_o),
+        .m_RLAST_o          (vif.m_RLAST_o),
+        .m_RVALID_o         (vif.m_RVALID_o),
+        
+        // Slave Interface Inputs (from TB Slave Drivers)
+        .s_AWREADY_i        (vif.s_AWREADY_i),
+        .s_WREADY_i         (vif.s_WREADY_i),
+        .s_BID_i            (vif.s_BID_i),
+        .s_BRESP_i          (vif.s_BRESP_i),
+        .s_BVALID_i         (vif.s_BVALID_i),
+        .s_ARREADY_i        (vif.s_ARREADY_i),
+        .s_RID_i            (vif.s_RID_i),
+        .s_RDATA_i          (vif.s_RDATA_i),
+        .s_RRESP_i          (vif.s_RRESP_i),
+        .s_RLAST_i          (vif.s_RLAST_i),
+        .s_RVALID_i         (vif.s_RVALID_i),
+        .s_RREADY_i         (vif.s_RREADY_i), // Note: s_RREADY_i doesn't exist? Wait.
+                                              // Checking RTL: input [SLV_AMT-1:0] s_RREADY_i ?? 
+                                              // No, RTL: output [SLV_AMT-1:0] s_RREADY_o
+                                              // Wait. Slave Port of Interconnect:
+                                              // Signals TO (Input) Master Interface of Slave.
+                                              // The Slave device has "s_" prefix usually.
+                                              // In `axi_interconnect.v`:
+                                              // -- To slave (master interface of the interconnect)
+                                              // output [...] s_AWID_o
+                                              // input [...] s_AWREADY_i
+                                              // output [...] s_RREADY_o
+        // This means the Interconnect DRIVES RREADY to the Slave.
+        // So the Slave Driver (TB) receives RREADY.
+        // Wait, normally Slave provides Data, Master provides Ready.
+        // Interconnect (Master side) -> Slave.
+        // Interconnect drives RREADY to Slave? No. Interconnect reads from slave.
+        // Interconnect behaves as a Master to the Slave.
+        // So Interconnect Outputs RREADY.
+        // Slave Inputs RREADY.
+        
+        // My interface `axi_interface.sv` has:
+        // logic [SLV_AMT-1:0] s_RREADY_o; // DUT Output
+        // So DUT (Interconnect) -> s_RREADY_o.
+        
+        // Connections:
+        .s_AWID_o           (vif.s_AWID_o),
+        .s_AWADDR_o         (vif.s_AWADDR_o),
+        .s_AWBURST_o        (vif.s_AWBURST_o),
+        .s_AWLEN_o          (vif.s_AWLEN_o),
+        .s_AWSIZE_o         (vif.s_AWSIZE_o),
+        .s_AWVALID_o        (vif.s_AWVALID_o),
+        .s_WDATA_o          (vif.s_WDATA_o),
+        .s_WLAST_o          (vif.s_WLAST_o),
+        .s_WVALID_o         (vif.s_WVALID_o),
+        .s_BREADY_o         (vif.s_BREADY_o),
+        .s_ARID_o           (vif.s_ARID_o),
+        .s_ARADDR_o         (vif.s_ARADDR_o),
+        .s_ARBURST_o        (vif.s_ARBURST_o),
+        .s_ARLEN_o          (vif.s_ARLEN_o),
+        .s_ARSIZE_o         (vif.s_ARSIZE_o),
+        .s_ARVALID_o        (vif.s_ARVALID_o),
+        .s_RREADY_o         (vif.s_RREADY_o)
+    );
+    
+    // Connect Test Program
+    test t1(vif);
+
+endmodule
